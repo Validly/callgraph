@@ -1,0 +1,199 @@
+digraph CallGraph {
+  compound=true;
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  edge [color=blue];
+
+  subgraph "cluster_types_ts" {
+    label="types.ts";
+    style=dashed;
+    color=gray;
+  }
+
+  subgraph "cluster_diagram_ts" {
+    label="diagram.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_diagram_ts_DiagramGenerator" {
+      label="DiagramGenerator";
+      style=solid;
+      color=lightblue;
+      "diagram_ts__DiagramGenerator__generateDot" [label="generateDot", shape=ellipse];
+      "diagram_ts__DiagramGenerator__generateSvg" [label="generateSvg", shape=ellipse];
+      "diagram_ts__DiagramGenerator__saveToFile" [label="saveToFile", shape=ellipse];
+    }
+    "diagram_ts__sanitizeId" [label="sanitizeId", shape=ellipse];
+  }
+
+  subgraph "cluster_function_call_analyzer_ts" {
+    label="function-call-analyzer.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_function_call_analyzer_ts_TypeScriptFunctionCallAnalyzer" {
+      label="TypeScriptFunctionCallAnalyzer";
+      style=solid;
+      color=lightblue;
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyze" [label="analyze", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findTsFiles" [label="findTsFiles", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyzeFileForFunctionCalls" [label="analyzeFileForFunctionCalls", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallRelationships" [label="findCallRelationships", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__resolveCallTarget" [label="resolveCallTarget", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallsInFile" [label="findCallsInFile", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__createNodeId" [label="createNodeId", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findNodeByName" [label="findNodeByName", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findNodeByNameWithContext" [label="findNodeByNameWithContext", shape=ellipse];
+      "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__isReturnValueUsed" [label="isReturnValueUsed", shape=ellipse];
+    }
+  }
+
+  subgraph "cluster_graph_adapter_ts" {
+    label="graph-adapter.ts";
+    style=dashed;
+    color=gray;
+    "graph_adapter_ts__convertCallGraphToGraph" [label="convertCallGraphToGraph", shape=ellipse];
+  }
+
+  subgraph "cluster_graph_diagram_ts" {
+    label="graph-diagram.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_graph_diagram_ts_GraphDiagramGenerator" {
+      label="GraphDiagramGenerator";
+      style=solid;
+      color=lightblue;
+      "graph_diagram_ts__GraphDiagramGenerator__generateDot" [label="generateDot", shape=ellipse];
+      "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" [label="generateNodeCluster", shape=ellipse];
+      "graph_diagram_ts__GraphDiagramGenerator__generateEdge" [label="generateEdge", shape=ellipse];
+      "graph_diagram_ts__GraphDiagramGenerator__getNodeShape" [label="getNodeShape", shape=ellipse];
+      "graph_diagram_ts__GraphDiagramGenerator__getNodeStyle" [label="getNodeStyle", shape=ellipse];
+      "graph_diagram_ts__GraphDiagramGenerator__generateSvg" [label="generateSvg", shape=ellipse];
+      "graph_diagram_ts__GraphDiagramGenerator__saveToFile" [label="saveToFile", shape=ellipse];
+    }
+    "graph_diagram_ts__sanitizeId" [label="sanitizeId", shape=ellipse];
+  }
+
+  subgraph "cluster_graph_operations_ts" {
+    label="graph-operations.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_graph_operations_ts_GraphOperationsImpl" {
+      label="GraphOperationsImpl";
+      style=solid;
+      color=lightblue;
+      "graph_operations_ts__GraphOperationsImpl__dedupe" [label="dedupe", shape=ellipse];
+      "graph_operations_ts__GraphOperationsImpl__collapse" [label="collapse", shape=ellipse];
+      "graph_operations_ts__GraphOperationsImpl__removeNodeAndDescendants" [label="removeNodeAndDescendants", shape=ellipse];
+      "graph_operations_ts__GraphOperationsImpl__findCollapsedParent" [label="findCollapsedParent", shape=ellipse];
+      "graph_operations_ts__GraphOperationsImpl__getHighLevelGraph" [label="getHighLevelGraph", shape=ellipse];
+    }
+  }
+
+  subgraph "cluster_svg_generator_ts" {
+    label="svg-generator.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_svg_generator_ts_GraphvizRenderer" {
+      label="GraphvizRenderer";
+      style=solid;
+      color=lightblue;
+      "svg_generator_ts__GraphvizRenderer__generateSVG" [label="generateSVG", shape=ellipse];
+      "svg_generator_ts__GraphvizRenderer__renderDotToSVG" [label="renderDotToSVG", shape=ellipse];
+      "svg_generator_ts__GraphvizRenderer__executeGraphviz" [label="executeGraphviz", shape=ellipse];
+      "svg_generator_ts__GraphvizRenderer__generateMultipleFormats" [label="generateMultipleFormats", shape=ellipse];
+    }
+  }
+
+  subgraph "cluster_layout_ts" {
+    label="layout.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_layout_ts_LayoutExtractor" {
+      label="LayoutExtractor";
+      style=solid;
+      color=lightblue;
+      "layout_ts__LayoutExtractor__extractLayout" [label="extractLayout", shape=ellipse];
+      "layout_ts__LayoutExtractor__parseJsonOutput" [label="parseJsonOutput", shape=ellipse];
+      "layout_ts__LayoutExtractor__convertToMiroCoordinates" [label="convertToMiroCoordinates", shape=ellipse];
+    }
+  }
+
+  subgraph "cluster_miro_ts" {
+    label="miro.ts";
+    style=dashed;
+    color=gray;
+    subgraph "cluster_miro_ts_MiroCallGraphGenerator" {
+      label="MiroCallGraphGenerator";
+      style=solid;
+      color=lightblue;
+      "miro_ts__MiroCallGraphGenerator__createBoard" [label="createBoard", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createHighLevelCallGraph" [label="createHighLevelCallGraph", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createClusters" [label="createClusters", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createNodes" [label="createNodes", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createConnections" [label="createConnections", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createMiroCluster" [label="createMiroCluster", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createMiroNode" [label="createMiroNode", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__createGroups" [label="createGroups", shape=ellipse];
+      "miro_ts__MiroCallGraphGenerator__listBoards" [label="listBoards", shape=ellipse];
+    }
+  }
+
+  subgraph "cluster_index_ts" {
+    label="index.ts";
+    style=dashed;
+    color=gray;
+    "index_ts__main" [label="main", shape=ellipse];
+  }
+
+  "diagram_ts__DiagramGenerator__generateDot" -> "diagram_ts__sanitizeId" [dir=both, arrowhead=normal, arrowtail=normal, label="×10"];
+  "diagram_ts__DiagramGenerator__generateSvg" -> "diagram_ts__DiagramGenerator__generateDot" [dir=both, arrowhead=normal, arrowtail=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyze" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findTsFiles" [dir=both, arrowhead=normal, arrowtail=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyze" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyzeFileForFunctionCalls" [arrowhead=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyze" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallRelationships" [arrowhead=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findTsFiles" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findTsFiles" [dir=both, arrowhead=normal, arrowtail=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyzeFileForFunctionCalls" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__createNodeId" [dir=both, arrowhead=normal, arrowtail=normal, label="×2"];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallRelationships" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallsInFile" [arrowhead=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__resolveCallTarget" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__createNodeId" [dir=both, arrowhead=normal, arrowtail=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallsInFile" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__resolveCallTarget" [dir=both, arrowhead=normal, arrowtail=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallsInFile" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findNodeByNameWithContext" [dir=both, arrowhead=normal, arrowtail=normal, label="×2"];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findCallsInFile" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__isReturnValueUsed" [dir=both, arrowhead=normal, arrowtail=normal, label="×2"];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findNodeByNameWithContext" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__createNodeId" [dir=both, arrowhead=normal, arrowtail=normal];
+  "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findNodeByNameWithContext" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__findNodeByName" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_diagram_ts__GraphDiagramGenerator__generateDot" -> "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_diagram_ts__GraphDiagramGenerator__generateDot" -> "graph_diagram_ts__GraphDiagramGenerator__generateEdge" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" -> "graph_diagram_ts__sanitizeId" [dir=both, arrowhead=normal, arrowtail=normal, label="×2"];
+  "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" -> "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" -> "graph_diagram_ts__GraphDiagramGenerator__getNodeShape" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_diagram_ts__GraphDiagramGenerator__generateNodeCluster" -> "graph_diagram_ts__GraphDiagramGenerator__getNodeStyle" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_diagram_ts__GraphDiagramGenerator__generateEdge" -> "graph_diagram_ts__sanitizeId" [dir=both, arrowhead=normal, arrowtail=normal, label="×2"];
+  "graph_diagram_ts__GraphDiagramGenerator__generateSvg" -> "graph_diagram_ts__GraphDiagramGenerator__generateDot" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_operations_ts__GraphOperationsImpl__collapse" -> "graph_operations_ts__GraphOperationsImpl__removeNodeAndDescendants" [arrowhead=normal];
+  "graph_operations_ts__GraphOperationsImpl__collapse" -> "graph_operations_ts__GraphOperationsImpl__findCollapsedParent" [dir=both, arrowhead=normal, arrowtail=normal, label="×2"];
+  "graph_operations_ts__GraphOperationsImpl__removeNodeAndDescendants" -> "graph_operations_ts__GraphOperationsImpl__removeNodeAndDescendants" [arrowhead=normal];
+  "graph_operations_ts__GraphOperationsImpl__findCollapsedParent" -> "graph_operations_ts__GraphOperationsImpl__findCollapsedParent" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_operations_ts__GraphOperationsImpl__getHighLevelGraph" -> "graph_operations_ts__GraphOperationsImpl__dedupe" [dir=both, arrowhead=normal, arrowtail=normal];
+  "graph_operations_ts__GraphOperationsImpl__getHighLevelGraph" -> "graph_operations_ts__GraphOperationsImpl__collapse" [dir=both, arrowhead=normal, arrowtail=normal];
+  "layout_ts__LayoutExtractor__extractLayout" -> "svg_generator_ts__GraphvizRenderer__executeGraphviz" [arrowhead=normal];
+  "layout_ts__LayoutExtractor__extractLayout" -> "layout_ts__LayoutExtractor__parseJsonOutput" [dir=both, arrowhead=normal, arrowtail=normal];
+  "miro_ts__MiroCallGraphGenerator__createBoard" -> "layout_ts__LayoutExtractor__extractLayout" [arrowhead=normal];
+  "miro_ts__MiroCallGraphGenerator__createBoard" -> "layout_ts__LayoutExtractor__convertToMiroCoordinates" [dir=both, arrowhead=normal, arrowtail=normal];
+  "miro_ts__MiroCallGraphGenerator__createBoard" -> "miro_ts__MiroCallGraphGenerator__createClusters" [arrowhead=normal];
+  "miro_ts__MiroCallGraphGenerator__createBoard" -> "miro_ts__MiroCallGraphGenerator__createNodes" [arrowhead=normal];
+  "miro_ts__MiroCallGraphGenerator__createBoard" -> "miro_ts__MiroCallGraphGenerator__createGroups" [arrowhead=normal];
+  "miro_ts__MiroCallGraphGenerator__createBoard" -> "miro_ts__MiroCallGraphGenerator__createConnections" [arrowhead=normal];
+  "miro_ts__MiroCallGraphGenerator__createClusters" -> "miro_ts__MiroCallGraphGenerator__createMiroCluster" [dir=both, arrowhead=normal, arrowtail=normal];
+  "miro_ts__MiroCallGraphGenerator__createNodes" -> "miro_ts__MiroCallGraphGenerator__createMiroNode" [dir=both, arrowhead=normal, arrowtail=normal];
+  "index_ts__main" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyze" [dir=back, arrowtail=normal, lhead=cluster_function_call_analyzer_ts_TypeScriptFunctionCallAnalyzer];
+  "index_ts__main" -> "function_call_analyzer_ts__TypeScriptFunctionCallAnalyzer__analyze" [dir=both, arrowhead=normal, arrowtail=normal];
+  "index_ts__main" -> "graph_adapter_ts__convertCallGraphToGraph" [dir=both, arrowhead=normal, arrowtail=normal];
+  "index_ts__main" -> "graph_operations_ts__GraphOperationsImpl__getHighLevelGraph" [dir=both, arrowhead=normal, arrowtail=normal];
+  "index_ts__main" -> "graph_diagram_ts__GraphDiagramGenerator__generateDot" [dir=back, arrowtail=normal, lhead=cluster_graph_diagram_ts_GraphDiagramGenerator];
+  "index_ts__main" -> "graph_diagram_ts__GraphDiagramGenerator__generateDot" [dir=both, arrowhead=normal, arrowtail=normal];
+  "index_ts__main" -> "graph_diagram_ts__GraphDiagramGenerator__saveToFile" [arrowhead=normal];
+  "index_ts__main" -> "diagram_ts__DiagramGenerator__generateDot" [dir=back, arrowtail=normal, lhead=cluster_diagram_ts_DiagramGenerator];
+  "index_ts__main" -> "diagram_ts__DiagramGenerator__generateDot" [dir=both, arrowhead=normal, arrowtail=normal];
+  "index_ts__main" -> "diagram_ts__DiagramGenerator__saveToFile" [arrowhead=normal];
+  "index_ts__main" -> "svg_generator_ts__GraphvizRenderer__generateSVG" [dir=back, arrowtail=normal, lhead=cluster_svg_generator_ts_GraphvizRenderer];
+  "index_ts__main" -> "svg_generator_ts__GraphvizRenderer__generateSVG" [arrowhead=normal, label="×2"];
+  "index_ts__main" -> "miro_ts__MiroCallGraphGenerator__createBoard" [dir=back, arrowtail=normal, lhead=cluster_miro_ts_MiroCallGraphGenerator];
+  "index_ts__main" -> "miro_ts__MiroCallGraphGenerator__createBoard" [arrowhead=normal];
+}

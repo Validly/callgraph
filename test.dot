@@ -1,0 +1,1 @@
+digraph Test { A -> B; }
