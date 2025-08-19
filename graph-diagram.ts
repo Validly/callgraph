@@ -23,8 +23,49 @@ export class GraphDiagramGenerator {
       }
     }
 
-    // Generate edges
+    // Generate edges with rendering-level deduplication
+    const edgeMap = new Map<string, Edge>();
+    
     for (const edge of graph.edges) {
+      const key = `${edge.from}->${edge.to}`;
+      
+      if (edgeMap.has(key)) {
+        const existing = edgeMap.get(key)!;
+        
+        // Merge data flow properties
+        existing.sendsData = existing.sendsData || edge.sendsData;
+        existing.returnsData = existing.returnsData || edge.returnsData;
+        
+        // Merge edge types (same logic as in dedupe operations)
+        if (typeof existing.type === 'string' && typeof edge.type === 'string') {
+          if (existing.type === edge.type) {
+            // Same type - convert to aggregated to track count
+            existing.type = { [existing.type]: 2 };
+          } else {
+            // Different types - create aggregated object
+            existing.type = { [existing.type]: 1, [edge.type]: 1 };
+          }
+        } else if (typeof existing.type === 'object' && typeof edge.type === 'string') {
+          const aggregated = existing.type as EdgeType;
+          aggregated[edge.type] = (aggregated[edge.type] || 0) + 1;
+        } else if (typeof existing.type === 'string' && typeof edge.type === 'object') {
+          const aggregated = { ...edge.type as EdgeType };
+          aggregated[existing.type] = (aggregated[existing.type] || 0) + 1;
+          existing.type = aggregated;
+        } else if (typeof existing.type === 'object' && typeof edge.type === 'object') {
+          const existingAgg = existing.type as EdgeType;
+          const edgeAgg = edge.type as EdgeType;
+          for (const [type, count] of Object.entries(edgeAgg)) {
+            existingAgg[type] = (existingAgg[type] || 0) + count;
+          }
+        }
+      } else {
+        edgeMap.set(key, { ...edge });
+      }
+    }
+    
+    // Generate DOT for deduplicated edges
+    for (const edge of edgeMap.values()) {
       dot = this.generateEdge(dot, edge, graph);
     }
 
@@ -75,23 +116,8 @@ export class GraphDiagramGenerator {
   private generateEdge(dot: string, edge: Edge, graph: Graph): string {
     const attributes: string[] = [];
     
-    // Handle data flow arrow heads
-    if (edge.sendsData && edge.returnsData) {
-      // Bidirectional data flow - both arrow heads
-      attributes.push('dir=both');
-      attributes.push('arrowhead=normal');
-      attributes.push('arrowtail=normal');
-    } else if (edge.sendsData) {
-      // Only sends data - forward arrow (default)
-      attributes.push('arrowhead=normal');
-    } else if (edge.returnsData) {
-      // Only returns data - reverse arrow
-      attributes.push('dir=back');
-      attributes.push('arrowtail=normal');
-    } else {
-      // No data flow - simple connection line
-      attributes.push('arrowhead=none');
-    }
+    // Simple forward arrow for all function calls
+    attributes.push('arrowhead=normal');
     
     // Handle edge types
     if (typeof edge.type === 'string') {
@@ -106,7 +132,7 @@ export class GraphDiagramGenerator {
       
       if (totalCount > 1) {
         const typeLabels = Object.entries(edgeType)
-          .map(([type, count]) => `${type}:${count}`)
+          .map(([type, count]) => count > 1 ? `x${count}` : type)
           .join(', ');
         attributes.push(`label="${typeLabels}"`);
       }

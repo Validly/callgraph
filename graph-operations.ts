@@ -149,11 +149,318 @@ export class GraphOperationsImpl implements GraphOperations {
     return nodeId;
   }
   
+  // Convenience method to get high-level view with selective cluster collapsing and depth control
+  getSelectiveHighLevelGraph(graph: Graph, clusterSpecs: string[]): Graph {
+    if (clusterSpecs.length === 0) {
+      // Default behavior: collapse all top-level clusters
+      return this.getHighLevelGraph(graph);
+    }
+    
+    // Parse cluster specifications with depth control
+    const clusterConfig = new Map<string, number>(); // cluster name -> max depth (0 = collapsed)
+    let defaultDepth = 0; // 0 means collapsed
+    let collapseAll = false;
+    
+    for (const spec of clusterSpecs) {
+      if (spec === 'all') {
+        collapseAll = true;
+        defaultDepth = 0;
+      } else if (spec.startsWith('all:')) {
+        collapseAll = true;
+        defaultDepth = parseInt(spec.split(':')[1]) || 0;
+      } else if (spec.startsWith('-')) {
+        // Exclusion with optional depth: -cluster or -cluster:depth
+        const excludeSpec = spec.substring(1);
+        const parts = excludeSpec.split(':');
+        const clusterName = parts[0];
+        const depth = parts.length > 1 ? parseInt(parts[1]) || Infinity : Infinity;
+        clusterConfig.set(clusterName, depth);
+      } else {
+        // Inclusion with optional depth: cluster or cluster:depth
+        const parts = spec.split(':');
+        const clusterName = parts[0];
+        const depth = parts.length > 1 ? parseInt(parts[1]) || 0 : 0;
+        clusterConfig.set(clusterName, depth);
+      }
+    }
+    
+    // Get all top-level cluster names
+    const allTopLevelClusters = Array.from(graph.nodes.values())
+      .filter(node => !node.parent)
+      .map(node => node.metadata?.cluster || node.name || node.id);
+    
+    // Determine final depth configuration for each cluster
+    const finalClusterConfig = new Map<string, number>();
+    
+    if (collapseAll) {
+      // Start with default depth for all clusters
+      for (const clusterName of allTopLevelClusters) {
+        finalClusterConfig.set(clusterName, defaultDepth);
+      }
+      
+      // Override with specific configurations
+      for (const [clusterName, depth] of clusterConfig.entries()) {
+        if (allTopLevelClusters.includes(clusterName)) {
+          finalClusterConfig.set(clusterName, depth);
+        }
+      }
+    } else {
+      // Only specified clusters are processed, rest are fully expanded
+      for (const clusterName of allTopLevelClusters) {
+        const configuredDepth = clusterConfig.get(clusterName);
+        finalClusterConfig.set(clusterName, configuredDepth !== undefined ? configuredDepth : Infinity);
+      }
+    }
+    
+    const configSummary = Array.from(finalClusterConfig.entries())
+      .map(([name, depth]) => `${name}:${depth === Infinity ? 'full' : depth}`)
+      .join(', ');
+    console.log(`🔍 Depth-controlled expansion: ${configSummary}`);
+    
+    // Apply depth-controlled expansion
+    return this.getDepthControlledGraph(graph, finalClusterConfig);
+  }
+  private getDepthControlledGraph(graph: Graph, clusterConfig: Map<string, number>): Graph {
+    const resultGraph: Graph = {
+      nodes: new Map(),
+      edges: []
+    };
+    
+    // Process each top-level cluster with its configured depth
+    for (const [nodeId, node] of graph.nodes) {
+      if (!node.parent) { // Top-level nodes only
+        const clusterName = node.metadata?.cluster || node.name || node.id;
+        const maxDepth = clusterConfig.get(clusterName) || 0;
+        
+        if (maxDepth === 0) {
+          // Completely collapsed - add only the top-level node
+          resultGraph.nodes.set(nodeId, {
+            ...node,
+            children: undefined
+          });
+        } else {
+          // Depth-controlled expansion
+          this.copyNodeWithDepthLimit(graph, resultGraph, nodeId, maxDepth, 0);
+        }
+      }
+    }
+    
+    // Process edges with mapping for collapsed/depth-limited nodes
+    const nodeMapping = this.createDepthControlledNodeMapping(graph, clusterConfig);
+    
+    for (const edge of graph.edges) {
+      const mappedFrom = nodeMapping.get(edge.from) || edge.from;
+      const mappedTo = nodeMapping.get(edge.to) || edge.to;
+      
+      // Only add edge if both endpoints exist in result graph and are different
+      if (mappedFrom !== mappedTo && 
+          resultGraph.nodes.has(mappedFrom) && 
+          resultGraph.nodes.has(mappedTo)) {
+        resultGraph.edges.push({
+          from: mappedFrom,
+          to: mappedTo,
+          type: edge.type,
+          sendsData: edge.sendsData,
+          returnsData: edge.returnsData
+        });
+      }
+    }
+    
+    // Deduplicate edges
+    return this.dedupe(resultGraph);
+  }
+  
+  private copyNodeWithDepthLimit(sourceGraph: Graph, targetGraph: Graph, nodeId: string, maxDepth: number, currentDepth: number): void {
+    const node = sourceGraph.nodes.get(nodeId);
+    if (!node) return;
+    
+    // Copy the node
+    const copiedNode = { ...node };
+    
+    if (currentDepth >= maxDepth || !node.children || node.children.size === 0) {
+      // At max depth or no children - stop expanding
+      copiedNode.children = undefined;
+    } else {
+      // Continue expanding children
+      copiedNode.children = new Map();
+      for (const childId of node.children.keys()) {
+        this.copyNodeWithDepthLimit(sourceGraph, targetGraph, childId, maxDepth, currentDepth + 1);
+        copiedNode.children.set(childId, targetGraph.nodes.get(childId)!);
+      }
+    }
+    
+    targetGraph.nodes.set(nodeId, copiedNode);
+  }
+  
+  private createDepthControlledNodeMapping(graph: Graph, clusterConfig: Map<string, number>): Map<string, string> {
+    const mapping = new Map<string, string>();
+    
+    // For each top-level cluster, map nodes beyond the depth limit to their appropriate parent
+    for (const [nodeId, node] of graph.nodes) {
+      if (!node.parent) { // Top-level node
+        const clusterName = node.metadata?.cluster || node.name || node.id;
+        const maxDepth = clusterConfig.get(clusterName) || 0;
+        
+        if (maxDepth === 0) {
+          // Completely collapsed - map all descendants to the cluster root
+          this.mapDescendantsToRoot(graph, mapping, nodeId, nodeId);
+        } else {
+          // Depth-limited - map nodes beyond maxDepth to their depth-limit ancestor
+          this.mapNodesByDepthLimit(graph, mapping, nodeId, maxDepth, 0, nodeId);
+        }
+      }
+    }
+    
+    return mapping;
+  }
+  
+  private mapNodesByDepthLimit(graph: Graph, mapping: Map<string, string>, currentNodeId: string, maxDepth: number, currentDepth: number, rootId: string): void {
+    const node = graph.nodes.get(currentNodeId);
+    if (!node) return;
+    
+    if (currentDepth > maxDepth) {
+      // Beyond max depth - find the ancestor at maxDepth
+      const ancestorAtLimit = this.findAncestorAtDepth(graph, currentNodeId, maxDepth, rootId);
+      mapping.set(currentNodeId, ancestorAtLimit || rootId);
+    } else {
+      // Within depth limit - map to self
+      mapping.set(currentNodeId, currentNodeId);
+    }
+    
+    // Process children
+    if (node.children) {
+      for (const childId of node.children.keys()) {
+        this.mapNodesByDepthLimit(graph, mapping, childId, maxDepth, currentDepth + 1, rootId);
+      }
+    }
+  }
+  
+  private findAncestorAtDepth(graph: Graph, nodeId: string, targetDepth: number, rootId: string): string | null {
+    // Walk up the parent chain to find the node at the target depth
+    let current = nodeId;
+    let depth = this.calculateNodeDepth(graph, nodeId, rootId);
+    
+    while (depth > targetDepth && current !== rootId) {
+      const node = graph.nodes.get(current);
+      if (!node?.parent) break;
+      current = node.parent;
+      depth--;
+    }
+    
+    return current;
+  }
+  
+  private calculateNodeDepth(graph: Graph, nodeId: string, rootId: string): number {
+    let depth = 0;
+    let current = nodeId;
+    
+    while (current !== rootId) {
+      const node = graph.nodes.get(current);
+      if (!node?.parent) break;
+      current = node.parent;
+      depth++;
+    }
+    
+    return depth;
+  }
+
+  private getSelectiveCollapsedGraph(graph: Graph, clustersToCollapse: Set<string>): Graph {
+    const resultGraph: Graph = {
+      nodes: new Map(),
+      edges: []
+    };
+    
+    // Process each top-level node
+    for (const [nodeId, node] of graph.nodes) {
+      if (!node.parent) { // Top-level nodes only
+        const clusterName = node.metadata?.cluster || node.name || node.id;
+        
+        if (clustersToCollapse.has(clusterName)) {
+          // Collapse this cluster - add only the top-level node without children
+          resultGraph.nodes.set(nodeId, {
+            ...node,
+            children: undefined
+          });
+        } else {
+          // Keep this cluster expanded - add node and all descendants
+          this.copyNodeAndDescendants(graph, resultGraph, nodeId);
+        }
+      }
+    }
+    
+    // Process edges with mapping for collapsed nodes
+    const nodeMapping = this.createNodeMapping(graph, clustersToCollapse);
+    
+    for (const edge of graph.edges) {
+      const mappedFrom = nodeMapping.get(edge.from) || edge.from;
+      const mappedTo = nodeMapping.get(edge.to) || edge.to;
+      
+      // Only add edge if both endpoints exist in result graph and are different
+      if (mappedFrom !== mappedTo && 
+          resultGraph.nodes.has(mappedFrom) && 
+          resultGraph.nodes.has(mappedTo)) {
+        resultGraph.edges.push({
+          from: mappedFrom,
+          to: mappedTo,
+          type: edge.type,
+          sendsData: edge.sendsData,
+          returnsData: edge.returnsData
+        });
+      }
+    }
+    
+    // Deduplicate edges
+    return this.dedupe(resultGraph);
+  }
+  
+  private copyNodeAndDescendants(sourceGraph: Graph, targetGraph: Graph, nodeId: string): void {
+    const node = sourceGraph.nodes.get(nodeId);
+    if (!node) return;
+    
+    // Copy the node
+    targetGraph.nodes.set(nodeId, { ...node });
+    
+    // Recursively copy children
+    if (node.children) {
+      for (const childId of node.children.keys()) {
+        this.copyNodeAndDescendants(sourceGraph, targetGraph, childId);
+      }
+    }
+  }
+  
+  private createNodeMapping(graph: Graph, clustersToCollapse: Set<string>): Map<string, string> {
+    const mapping = new Map<string, string>();
+    
+    // For each collapsed cluster, map all descendants to the cluster root
+    for (const [nodeId, node] of graph.nodes) {
+      if (!node.parent) { // Top-level node
+        const clusterName = node.metadata?.cluster || node.name || node.id;
+        
+        if (clustersToCollapse.has(clusterName)) {
+          // Map all descendants of this cluster to the cluster root
+          this.mapDescendantsToRoot(graph, mapping, nodeId, nodeId);
+        }
+      }
+    }
+    
+    return mapping;
+  }
+  
+  private mapDescendantsToRoot(graph: Graph, mapping: Map<string, string>, currentNodeId: string, rootId: string): void {
+    mapping.set(currentNodeId, rootId);
+    
+    const node = graph.nodes.get(currentNodeId);
+    if (node?.children) {
+      for (const childId of node.children.keys()) {
+        this.mapDescendantsToRoot(graph, mapping, childId, rootId);
+      }
+    }
+  }
+
   // Convenience method to get high-level view  
   getHighLevelGraph(graph: Graph): Graph {
     // Get only top-level nodes (nodes with no parent)
     const topLevelNodes = new Map<string, any>();
-    const topLevelEdges: Edge[] = [];
     
     // Find all top-level nodes
     console.log(`🔍 Debug: Scanning ${graph.nodes.size} nodes for top-level nodes...`);

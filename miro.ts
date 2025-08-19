@@ -1,7 +1,7 @@
 import { MiroApi } from "@mirohq/miro-api";
 import { config } from "dotenv";
 import * as fs from "fs";
-import { CallGraph, CallGraphNode, HighLevelCallGraph } from "./types.js";
+import { Graph, Node, Edge } from "./types.js";
 import {
   LayoutExtractor,
   GraphLayout,
@@ -44,7 +44,7 @@ export class MiroCallGraphGenerator {
    * Create a new Miro board with the call graph
    */
   async createBoard(
-    callGraph: CallGraph,
+    graph: Graph,
     dotContent: string,
     boardName: string = "Call Graph"
   ): Promise<string> {
@@ -82,7 +82,7 @@ export class MiroCallGraphGenerator {
       console.log(`🔵 Creating ${scaledLayout.nodes.size} nodes...`);
       const createdItems = await this.createNodes(
         board.id,
-        callGraph,
+        graph,
         scaledLayout,
         positionLog
       );
@@ -98,17 +98,17 @@ export class MiroCallGraphGenerator {
       console.log(`🗂️  Creating groups for clusters...`);
       await this.createGroups(
         board.id,
-        callGraph,
+        graph,
         scaledLayout,
         createdClusters,
         createdItems
       );
 
       // Create connections
-      console.log(`🔗 Creating ${callGraph.edges.length} connections...`);
+      console.log(`🔗 Creating ${graph.edges.length} connections...`);
       await this.createConnections(
         board.id,
-        callGraph,
+        graph,
         scaledLayout,
         createdItems,
         createdClusters
@@ -276,7 +276,7 @@ export class MiroCallGraphGenerator {
    */
   private async createNodes(
     boardId: string,
-    callGraph: CallGraph,
+    graph: Graph,
     layout: GraphLayout,
     positionLog: any[]
   ): Promise<Map<string, any>> {
@@ -287,7 +287,7 @@ export class MiroCallGraphGenerator {
     const sanitizeId = (id: string): string =>
       id.replace(/[^a-zA-Z0-9_]/g, "_");
 
-    for (const [nodeId, node] of callGraph.nodes) {
+    for (const [nodeId, node] of graph.nodes) {
       const sanitizedId = sanitizeId(nodeId);
       const nodeLayout = layout.nodes.get(sanitizedId);
       if (!nodeLayout) {
@@ -308,8 +308,8 @@ export class MiroCallGraphGenerator {
         positionLog.push({
           type: "node",
           id: nodeId,
-          label: callGraph.nodes.get(nodeId)?.name,
-          nodeType: callGraph.nodes.get(nodeId)?.type,
+          label: graph.nodes.get(nodeId)?.name,
+          nodeType: graph.nodes.get(nodeId)?.type,
           position: shape.position,
           geometry: shape.geometry,
         });
@@ -335,7 +335,7 @@ export class MiroCallGraphGenerator {
    */
   private async createConnections(
     boardId: string,
-    callGraph: CallGraph,
+    graph: Graph,
     layout: GraphLayout,
     createdNodes: Map<string, any>,
     createdClusters: Map<string, any>
@@ -347,7 +347,7 @@ export class MiroCallGraphGenerator {
     const sanitizeId = (id: string): string =>
       id.replace(/[^a-zA-Z0-9_]/g, "_");
 
-    for (const edge of callGraph.edges) {
+    for (const edge of graph.edges) {
       let fromItemId: string;
       let toItemId: string;
       let connectionKey: string;
@@ -365,12 +365,12 @@ export class MiroCallGraphGenerator {
       // Handle instantiation calls differently - connect to class cluster instead of constructor
       if (edge.type === "instantiation") {
         // Find the target class name from the edge.to node
-        const toNode = callGraph.nodes.get(edge.to);
-        if (toNode && toNode.className) {
+        const toNode = graph.nodes.get(edge.to);
+        if (toNode && toNode.metadata?.className) {
           // Look for a class cluster for this class
           // Pattern: cluster_filename_ClassName (where filename has . replaced with _)
-          const sanitizedClassName = sanitizeId(toNode.className);
-          const sanitizedFileName = sanitizeId(toNode.file); // Keep the extension, just sanitize
+          const sanitizedClassName = sanitizeId(toNode.metadata.className);
+          const sanitizedFileName = sanitizeId(toNode.metadata.file || ''); // Keep the extension, just sanitize
           const classClusterId = `cluster_${sanitizedFileName}_${sanitizedClassName}`;
           
           const classCluster = createdClusters.get(classClusterId);
@@ -536,29 +536,34 @@ export class MiroCallGraphGenerator {
   }
 
   /**
-   * Convert CallGraphNode to Miro shape format
+   * Convert Graph Node to Miro shape format
    */
   private createMiroNode(
-    node: CallGraphNode,
+    node: Node,
     layout: NodeLayout,
     sanitizedId?: string
   ) {
     const colors = {
       function: "#e1f5fe",
-      method: "#f3e5f5",
+      method: "#f3e5f5", 
       class: "#fff3e0",
+      file: "#f0f8f0", // Light green for cluster nodes
     };
 
     const shapes = {
       function: "round_rectangle",
       method: "round_rectangle",
       class: "rectangle",
+      file: "rectangle", // Rectangle for cluster nodes
     };
 
     // Use the Graphviz label instead of constructing our own display name
     const displayName = layout.label;
 
-    const fileName = node.file.split("/").pop() || node.file;
+    // For hybrid cluster nodes, they might not have a file property
+    const fileName = node.metadata?.file ? 
+      node.metadata.file.split("/").pop() || node.metadata.file : 
+      node.name;
 
     return {
       data: {
@@ -590,7 +595,7 @@ export class MiroCallGraphGenerator {
    */
   private async createGroups(
     boardId: string,
-    callGraph: CallGraph,
+    graph: Graph,
     layout: GraphLayout,
     createdClusters: Map<string, any>,
     createdNodes: Map<string, any>
@@ -613,10 +618,10 @@ export class MiroCallGraphGenerator {
         }
 
         // Find all nodes that belong to this class
-        for (const [nodeId, node] of callGraph.nodes) {
+        for (const [nodeId, node] of graph.nodes) {
           if (
-            node.className &&
-            clusterId.includes(sanitizeId(node.className))
+            node.metadata?.className &&
+            clusterId.includes(sanitizeId(node.metadata.className))
           ) {
             const createdNode = createdNodes.get(nodeId);
             if (createdNode?.body?.id) {
@@ -670,8 +675,8 @@ export class MiroCallGraphGenerator {
         }
 
         // Add any standalone nodes in this file (not part of a class)
-        for (const [nodeId, node] of callGraph.nodes) {
-          if (node.file.includes(cluster.label) && !node.className) {
+        for (const [nodeId, node] of graph.nodes) {
+          if (node.metadata?.file?.includes(cluster.label) && !node.metadata?.className) {
             const createdNode = createdNodes.get(nodeId);
             if (createdNode?.body?.id) {
               itemIds.push(createdNode.body.id);
