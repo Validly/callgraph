@@ -1,6 +1,10 @@
 import type { CallGraph } from './types.js';
 
 function sanitizeId(id: string): string {
+  if (!id) {
+    console.warn('⚠️ Empty or null ID found in diagram generation, generating fallback ID');
+    return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
   return id.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
@@ -18,6 +22,7 @@ export class DiagramGenerator {
       dot += `    label="${fileName}";\n`;
       dot += '    style=dashed;\n';
       dot += '    color=gray;\n';
+      
 
       // Generate class clusters within files
       const fileClasses = new Set<string>();
@@ -29,7 +34,17 @@ export class DiagramGenerator {
       }
 
       for (const className of fileClasses) {
-        const classNodeIds = callGraph.classes.get(className) || [];
+        // Look for class nodes both by className alone and by file::className format
+        let classNodeIds = callGraph.classes.get(className) || [];
+        if (classNodeIds.length === 0) {
+          classNodeIds = callGraph.classes.get(`${fileName}::${className}`) || [];
+        }
+        // Also try with underscores (for hybrid clustering)
+        if (classNodeIds.length === 0) {
+          const sanitizedClassName = className.replace(/\s+/g, '_');
+          classNodeIds = callGraph.classes.get(`${fileName}::${sanitizedClassName}`) || [];
+        }
+        
         if (classNodeIds.length > 0) {
           dot += `    subgraph "cluster_${sanitizeId(fileName)}_${sanitizeId(className)}" {\n`;
           dot += `      label="${className}";\n`;
@@ -39,7 +54,17 @@ export class DiagramGenerator {
           for (const nodeId of classNodeIds) {
             const node = callGraph.nodes.get(nodeId);
             if (node) {
-              dot += `      "${sanitizeId(nodeId)}" [label="${node.name}", shape=ellipse];\n`;
+              // Extract original class from nodeId for better labeling (format: file__Class__method)
+              let label = node.name;
+              const nodeIdParts = nodeId.split('__');
+              if (nodeIdParts.length >= 3) {
+                const originalClass = nodeIdParts[1];
+                // Always show class context for methods to distinguish between nodes with same method name
+                if (originalClass && originalClass !== 'undefined') {
+                  label = `${originalClass}::${node.name}`;
+                }
+              }
+              dot += `      "${sanitizeId(nodeId)}" [label="${label}", shape=ellipse];\n`;
             }
           }
           dot += '    }\n';
@@ -50,7 +75,16 @@ export class DiagramGenerator {
       for (const nodeId of nodeIds) {
         const node = callGraph.nodes.get(nodeId);
         if (node && !node.className && node.type !== 'class') {
-          dot += `    "${sanitizeId(nodeId)}" [label="${node.name}", shape=ellipse];\n`;
+          // Extract class context from nodeId for standalone functions too
+          let label = node.name;
+          const nodeIdParts = nodeId.split('__');
+          if (nodeIdParts.length >= 3) {
+            const originalClass = nodeIdParts[1];
+            if (originalClass && originalClass !== 'undefined') {
+              label = `${originalClass}::${node.name}`;
+            }
+          }
+          dot += `    "${sanitizeId(nodeId)}" [label="${label}", shape=ellipse];\n`;
         } else if (node && node.type === 'class') {
           dot += `    "${sanitizeId(nodeId)}" [label="${node.name}", shape=box, style="filled,rounded", fillcolor=lightcyan];\n`;
         }

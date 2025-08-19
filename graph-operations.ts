@@ -149,9 +149,145 @@ export class GraphOperationsImpl implements GraphOperations {
     return nodeId;
   }
   
-  // Convenience method to get high-level view
+  // Convenience method to get high-level view  
   getHighLevelGraph(graph: Graph): Graph {
-    return this.dedupe(this.collapse(graph));
+    // Get only top-level nodes (nodes with no parent)
+    const topLevelNodes = new Map<string, any>();
+    const topLevelEdges: Edge[] = [];
+    
+    // Find all top-level nodes
+    console.log(`🔍 Debug: Scanning ${graph.nodes.size} nodes for top-level nodes...`);
+    let topLevelCount = 0;
+    for (const [nodeId, node] of graph.nodes) {
+      if (!node.parent) {
+        topLevelNodes.set(nodeId, {
+          ...node,
+          children: undefined // Remove children to make it truly high-level
+        });
+        topLevelCount++;
+        if (topLevelCount <= 10) {
+          console.log(`   Top-level node: ${nodeId} (type: ${node.type})`);
+        }
+      }
+    }
+    console.log(`📊 Debug: Found ${topLevelCount} top-level nodes`);
+    console.log(`📊 Debug: Top-level node keys:`, Array.from(topLevelNodes.keys()).slice(0, 5));
+    
+    // Create a mapping from child nodes to their top-level parents
+    const nodeToTopLevel = new Map<string, string>();
+    
+    function findTopLevelParent(nodeId: string): string {
+      const node = graph.nodes.get(nodeId);
+      if (!node) {
+        return nodeId;
+      }
+      
+      // Check if we've cached this lookup
+      if (nodeToTopLevel.has(nodeId)) {
+        return nodeToTopLevel.get(nodeId)!;
+      }
+      
+      // If this node has no parent, it's the top-level
+      if (!node.parent) {
+        nodeToTopLevel.set(nodeId, nodeId);
+        return nodeId;
+      }
+      
+      // Recursively find the top-level parent
+      const topLevel = findTopLevelParent(node.parent);
+      nodeToTopLevel.set(nodeId, topLevel);
+      return topLevel;
+    }
+    
+    // Create edges between top-level nodes based on child relationships
+    const edgeMap = new Map<string, Edge>();
+    
+    console.log(`🔍 Debug: Processing ${graph.edges.length} edges to find domain connections...`);
+    let crossDomainEdges = 0;
+    
+    for (const edge of graph.edges) {
+      const fromTopLevel = findTopLevelParent(edge.from);
+      const toTopLevel = findTopLevelParent(edge.to);
+      
+      // Debug logging for a few sample edges and the node hierarchy
+      if (crossDomainEdges < 3) {
+        console.log(`   Edge: ${edge.from} → ${edge.to}`);
+        const fromNode = graph.nodes.get(edge.from);
+        const toNode = graph.nodes.get(edge.to);
+        console.log(`   From node parent: ${fromNode?.parent}, To node parent: ${toNode?.parent}`);
+        console.log(`   Top-level: ${fromTopLevel} → ${toTopLevel}`);
+        console.log(`   Different domains: ${fromTopLevel !== toTopLevel}`);
+        console.log(`   From exists: ${topLevelNodes.has(fromTopLevel)}, To exists: ${topLevelNodes.has(toTopLevel)}`);
+        
+        // Show the parent chain for debugging
+        let current = edge.from;
+        const chain = [current];
+        while (graph.nodes.get(current)?.parent) {
+          current = graph.nodes.get(current)!.parent!;
+          chain.push(current);
+        }
+        console.log(`   Parent chain: ${chain.join(' → ')}`);
+      }
+      
+      // Only create edge if different top-level nodes and both exist
+      if (fromTopLevel !== toTopLevel && 
+          topLevelNodes.has(fromTopLevel) && 
+          topLevelNodes.has(toTopLevel)) {
+        
+        crossDomainEdges++;
+        
+        const edgeKey = `${fromTopLevel}->${toTopLevel}`;
+        
+        if (edgeMap.has(edgeKey)) {
+          // Merge with existing edge (aggregate edge types)
+          const existing = edgeMap.get(edgeKey)!;
+          if (typeof existing.type === 'string' && typeof edge.type === 'string') {
+            if (existing.type === edge.type) {
+              // Same type, keep as string but we'll handle counts later in dedupe
+              existing.type = edge.type;
+            } else {
+              // Different types, create aggregated object
+              const aggregated: EdgeType = {};
+              aggregated[existing.type] = 1;
+              aggregated[edge.type] = 1;
+              existing.type = aggregated;
+            }
+          } else if (typeof existing.type === 'object' && typeof edge.type === 'string') {
+            const aggregated = existing.type as EdgeType;
+            aggregated[edge.type] = (aggregated[edge.type] || 0) + 1;
+          } else if (typeof existing.type === 'string' && typeof edge.type === 'object') {
+            const aggregated = { ...edge.type as EdgeType };
+            aggregated[existing.type] = (aggregated[existing.type] || 0) + 1;
+            existing.type = aggregated;
+          } else if (typeof existing.type === 'object' && typeof edge.type === 'object') {
+            const existingAgg = existing.type as EdgeType;
+            const edgeAgg = edge.type as EdgeType;
+            for (const [type, count] of Object.entries(edgeAgg)) {
+              existingAgg[type] = (existingAgg[type] || 0) + count;
+            }
+          }
+          
+          // Merge data flow properties
+          existing.sendsData = existing.sendsData || edge.sendsData;
+          existing.returnsData = existing.returnsData || edge.returnsData;
+        } else {
+          edgeMap.set(edgeKey, {
+            from: fromTopLevel,
+            to: toTopLevel,
+            type: edge.type,
+            sendsData: edge.sendsData,
+            returnsData: edge.returnsData
+          });
+        }
+      }
+    }
+    
+    console.log(`✅ Debug: Found ${crossDomainEdges} cross-domain edges, created ${edgeMap.size} domain-to-domain connections`);
+    
+    return {
+      nodes: topLevelNodes,
+      edges: Array.from(edgeMap.values())
+    };
   }
 }
 

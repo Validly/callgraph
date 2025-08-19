@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { CallGraph, CallGraphNode, CallGraphEdge } from './types.js';
+import type { Graph, Node, Edge } from './types.js';
 
 /**
  * Analyzes TypeScript/JavaScript code to extract function call relationships.
@@ -9,14 +9,12 @@ import type { CallGraph, CallGraphNode, CallGraphEdge } from './types.js';
  * which functions call which other functions.
  */
 export class TypeScriptFunctionCallAnalyzer {
-  private callGraph: CallGraph = {
+  private graph: Graph = {
     nodes: new Map(),
-    edges: [],
-    files: new Map(),
-    classes: new Map()
+    edges: []
   };
 
-  analyze(projectPath: string): CallGraph {
+  analyze(projectPath: string): Graph {
     const tsConfigPath = path.join(projectPath, 'tsconfig.json');
     let program: ts.Program;
     
@@ -45,7 +43,7 @@ export class TypeScriptFunctionCallAnalyzer {
     }
 
     this.findCallRelationships(program);
-    return this.callGraph;
+    return this.graph;
   }
 
   private findTsFiles(dir: string): string[] {
@@ -68,47 +66,77 @@ export class TypeScriptFunctionCallAnalyzer {
   private analyzeFileForFunctionCalls(sourceFile: ts.SourceFile) {
     const fileName = path.relative(process.cwd(), sourceFile.fileName);
     
-    if (!this.callGraph.files.has(fileName)) {
-      this.callGraph.files.set(fileName, []);
+    // Create file node if it doesn't exist
+    if (!this.graph.nodes.has(fileName)) {
+      const fileNode: Node = {
+        id: fileName,
+        name: path.basename(fileName),
+        type: 'file',
+        metadata: { filePath: fileName },
+        children: new Map()
+      };
+      this.graph.nodes.set(fileName, fileNode);
     }
 
     const visit = (node: ts.Node, currentClass?: string) => {
       if (ts.isFunctionDeclaration(node) && node.name) {
         const nodeId = this.createNodeId(fileName, node.name.text, currentClass);
-        const graphNode: CallGraphNode = {
+        const functionNode: Node = {
           id: nodeId,
           name: node.name.text,
           type: 'function',
-          file: fileName,
-          className: currentClass
+          metadata: { file: fileName, className: currentClass },
+          parent: currentClass ? `${fileName}::${currentClass}` : fileName
         };
-        this.callGraph.nodes.set(nodeId, graphNode);
-        this.callGraph.files.get(fileName)!.push(nodeId);
+        this.graph.nodes.set(nodeId, functionNode);
+        
+        // Add to parent's children
+        const parentId = currentClass ? `${fileName}::${currentClass}` : fileName;
+        const parentNode = this.graph.nodes.get(parentId);
+        if (parentNode) {
+          parentNode.children!.set(nodeId, functionNode);
+        }
       }
       
       if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
         const nodeId = this.createNodeId(fileName, node.name.text, currentClass);
-        const graphNode: CallGraphNode = {
+        const methodNode: Node = {
           id: nodeId,
           name: node.name.text,
           type: 'method',
-          file: fileName,
-          className: currentClass
+          metadata: { file: fileName, className: currentClass },
+          parent: currentClass ? `${fileName}::${currentClass}` : fileName
         };
-        this.callGraph.nodes.set(nodeId, graphNode);
-        this.callGraph.files.get(fileName)!.push(nodeId);
+        this.graph.nodes.set(nodeId, methodNode);
         
-        if (currentClass) {
-          if (!this.callGraph.classes.has(currentClass)) {
-            this.callGraph.classes.set(currentClass, []);
-          }
-          this.callGraph.classes.get(currentClass)!.push(nodeId);
+        // Add to parent's children
+        const parentId = currentClass ? `${fileName}::${currentClass}` : fileName;
+        const parentNode = this.graph.nodes.get(parentId);
+        if (parentNode) {
+          parentNode.children!.set(nodeId, methodNode);
         }
       }
       
       if (ts.isClassDeclaration(node) && node.name) {
         const className = node.name.text;
-        this.callGraph.classes.set(className, []);
+        const classId = `${fileName}::${className}`;
+        
+        // Create class node
+        const classNode: Node = {
+          id: classId,
+          name: className,
+          type: 'class',
+          metadata: { file: fileName },
+          children: new Map(),
+          parent: fileName
+        };
+        this.graph.nodes.set(classId, classNode);
+        
+        // Add to file's children
+        const fileNode = this.graph.nodes.get(fileName);
+        if (fileNode) {
+          fileNode.children!.set(classId, classNode);
+        }
         
         ts.forEachChild(node, child => visit(child, className));
         return;
@@ -193,7 +221,7 @@ export class TypeScriptFunctionCallAnalyzer {
       functionName = declaration.name?.text || (ts.isIdentifier(targetExpression) ? targetExpression.text : undefined);
       if (functionName) {
         // Find the function in our call graph by name
-        for (const [nodeId, node] of this.callGraph.nodes) {
+        for (const [nodeId, node] of this.graph.nodes) {
           if (node.name === functionName && node.type === 'function') {
             return { nodeId };
           }
@@ -209,8 +237,8 @@ export class TypeScriptFunctionCallAnalyzer {
     // Create the node ID using the same logic as in analyzeFile
     const nodeId = this.createNodeId(fileName, functionName, className);
     
-    // Verify the node exists in our call graph
-    if (this.callGraph.nodes.has(nodeId)) {
+    // Verify the node exists in our graph
+    if (this.graph.nodes.has(nodeId)) {
       return { nodeId };
     }
     
@@ -254,10 +282,10 @@ export class TypeScriptFunctionCallAnalyzer {
             // Check if the return value is used in an expression (returns data)
             const returnsData = this.isReturnValueUsed(node);
             
-            this.callGraph.edges.push({ 
+            this.graph.edges.push({ 
               from: fromNodeId, 
               to: callTarget.nodeId, 
-              type: 'call',
+              type: 'function_call',
               sendsData,
               returnsData
             });
@@ -272,18 +300,19 @@ export class TypeScriptFunctionCallAnalyzer {
           const fromNodeId = this.findNodeByNameWithContext(currentFunction, fileName, currentClass);
           
           if (fromNodeId) {
-            // Find any method in the class to use as the edge target
-            const classMethodIds = this.callGraph.classes.get(className);
-            if (classMethodIds && classMethodIds.length > 0) {
+            // Find the class node to use as the edge target
+            const classId = `${fileName}::${className}`;
+            const classNode = this.graph.nodes.get(classId);
+            if (classNode) {
               // Check if the constructor call has parameters (sends data)
               const sendsData = node.arguments && node.arguments.length > 0;
               
               // Check if the return value (new instance) is used (returns data)
               const returnsData = this.isReturnValueUsed(node as any);
               
-              this.callGraph.edges.push({ 
+              this.graph.edges.push({ 
                 from: fromNodeId, 
-                to: classMethodIds[0]!,
+                to: classId,
                 type: 'instantiation',
                 sendsData,
                 returnsData
@@ -305,14 +334,14 @@ export class TypeScriptFunctionCallAnalyzer {
 
   private findNodeByName(name: string, fileName: string): string | null {
     // First try to find in the same file
-    for (const [nodeId, node] of this.callGraph.nodes) {
-      if (node.name === name && node.file === fileName) {
+    for (const [nodeId, node] of this.graph.nodes) {
+      if (node.name === name && node.metadata?.file === fileName) {
         return nodeId;
       }
     }
     
     // If not found in the same file, search across all files
-    for (const [nodeId, node] of this.callGraph.nodes) {
+    for (const [nodeId, node] of this.graph.nodes) {
       if (node.name === name) {
         return nodeId;
       }
@@ -326,7 +355,7 @@ export class TypeScriptFunctionCallAnalyzer {
     const expectedNodeId = this.createNodeId(fileName, name, className);
     
     // Check if this exact node exists
-    if (this.callGraph.nodes.has(expectedNodeId)) {
+    if (this.graph.nodes.has(expectedNodeId)) {
       return expectedNodeId;
     }
     

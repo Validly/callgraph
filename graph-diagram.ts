@@ -1,6 +1,10 @@
 import type { Graph, Node, Edge, EdgeType } from './types.js';
 
 function sanitizeId(id: string): string {
+  if (!id) {
+    console.warn('⚠️ Empty or null ID found in graph diagram generation, generating fallback ID');
+    return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
   return id.replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
