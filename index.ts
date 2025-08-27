@@ -397,26 +397,180 @@ Examples:
 
     projectPath = path.resolve(response.directory);
 
-    // Ask about Miro output if not specified via command line
-    const miroResponse = await prompts({
-      type: 'confirm',
-      name: 'miro',
-      message: 'Output call graph to Miro board?',
-      initial: false
+    // Ask about analysis method
+    const analysisResponse = await prompts({
+      type: 'select',
+      name: 'analysisMethod',
+      message: 'Choose analysis method:',
+      choices: [
+        { title: 'AST-based (TypeScript compiler)', value: 'ast', description: 'Fast, accurate function call analysis using TypeScript compiler' },
+        { title: 'LLM-based (semantic analysis)', value: 'llm', description: 'AI-powered semantic understanding of code architecture' },
+        { title: 'Hybrid (AST + LLM clustering)', value: 'hybrid', description: 'AST precision with LLM domain organization' },
+        { title: 'Nested Hybrid (3-level clustering)', value: 'nested-hybrid', description: 'Domain → File → Class → Methods hierarchy' },
+        { title: 'Control Flow Analysis', value: 'controlflow', description: 'Analyze control flow within a specific function' }
+      ],
+      initial: 0
     });
 
-    outputToMiro = miroResponse.miro;
+    if (!analysisResponse.analysisMethod) {
+      console.log('Operation cancelled.');
+      process.exit(0);
+    }
 
-    // Ask about high-level view if outputting to Miro
-    if (outputToMiro) {
-      const highLevelResponse = await prompts({
+    // Set analysis flags based on selection
+    switch (analysisResponse.analysisMethod) {
+      case 'llm':
+        useLLMVibe = true;
+        break;
+      case 'hybrid':
+        useHybrid = true;
+        break;
+      case 'nested-hybrid':
+        useNestedHybrid = true;
+        break;
+      case 'controlflow':
+        useControlFlow = true;
+        break;
+      // 'ast' is default, no flags needed
+    }
+
+    // Ask for control flow specific options if control flow analysis is selected
+    if (useControlFlow) {
+      const controlFlowOptions = await prompts([
+        {
+          type: 'text',
+          name: 'functionName',
+          message: 'Enter function name to analyze:',
+          validate: (value: string) => value.trim().length > 0 || 'Function name is required'
+        },
+        {
+          type: 'text',
+          name: 'fileName',
+          message: 'Enter file name (optional, leave empty to search all files):',
+          initial: ''
+        }
+      ]);
+
+      if (!controlFlowOptions.functionName) {
+        console.log('Operation cancelled.');
+        process.exit(0);
+      }
+
+      controlFlowFunction = controlFlowOptions.functionName;
+      if (controlFlowOptions.fileName && controlFlowOptions.fileName.trim()) {
+        controlFlowFile = controlFlowOptions.fileName.trim();
+      }
+    }
+
+    // Ask for LLM-specific options if using LLM or hybrid analysis
+    if (useLLMVibe || useHybrid || useNestedHybrid) {
+      const llmOptions = await prompts([
+        {
+          type: 'select',
+          name: 'template',
+          message: `Choose ${useHybrid || useNestedHybrid ? 'hybrid' : 'LLM'} template:`,
+          choices: useHybrid || useNestedHybrid ? [
+            { title: 'hybrid-clustering (default)', value: 'hybrid-clustering', description: 'Domain-based clustering from call graph' },
+            { title: 'hybrid-clustering-detailed', value: 'hybrid-clustering-detailed', description: 'Detailed architectural clustering' }
+          ] : [
+            { title: 'callgraph-basic (default)', value: 'callgraph-basic', description: 'Basic call graph generation' },
+            { title: 'callgraph-detailed', value: 'callgraph-detailed', description: 'Detailed analysis with metadata' },
+            { title: 'callgraph-architecture', value: 'callgraph-architecture', description: 'High-level architectural analysis' },
+            { title: 'callgraph-debug', value: 'callgraph-debug', description: 'Debug-focused analysis' }
+          ],
+          initial: 0
+        },
+        {
+          type: 'text',
+          name: 'customPrompt',
+          message: 'Enter custom prompt (optional, leave empty to use template):',
+          initial: ''
+        },
+        {
+          type: 'text',
+          name: 'promptSuffix',
+          message: 'Enter prompt suffix (optional, additional instructions):',
+          initial: ''
+        }
+      ]);
+
+      if (llmOptions.template && llmOptions.template !== (useHybrid || useNestedHybrid ? 'hybrid-clustering' : 'callgraph-basic')) {
+        promptTemplate = llmOptions.template;
+      }
+      if (llmOptions.customPrompt && llmOptions.customPrompt.trim()) {
+        customPrompt = llmOptions.customPrompt.trim();
+      }
+      if (llmOptions.promptSuffix && llmOptions.promptSuffix.trim()) {
+        promptSuffix = llmOptions.promptSuffix.trim();
+      }
+    }
+
+    // Ask about output options
+    const outputOptions = await prompts([
+      {
+        type: 'confirm',
+        name: 'miro',
+        message: 'Output call graph to Miro board?',
+        initial: false
+      },
+      {
+        type: 'confirm',
+        name: 'svg',
+        message: 'Generate SVG files automatically?',
+        initial: false
+      },
+      {
         type: 'confirm',
         name: 'highlevel',
-        message: 'Use high-level view (classes/files only)?',
+        message: 'Use high-level view (collapse clusters)?',
         initial: false
+      }
+    ]);
+
+    outputToMiro = outputOptions.miro || false;
+    generateSVGFiles = outputOptions.svg || false;
+    useHighLevel = outputOptions.highlevel || false;
+
+    // Ask for high-level cluster specification if high-level view is enabled
+    if (useHighLevel) {
+      const highLevelSpec = await prompts({
+        type: 'text',
+        name: 'clusters',
+        message: 'Enter cluster specification (optional, e.g., "all:0,-Domain:1"):',
+        initial: ''
       });
 
-      useHighLevel = highLevelResponse.highlevel;
+      if (highLevelSpec.clusters && highLevelSpec.clusters.trim()) {
+        highLevelClusters = highLevelSpec.clusters.trim().split(',').map((c: string) => c.trim());
+      }
+    }
+
+    // Ask about cache options for LLM-based analysis
+    if (useLLMVibe || useHybrid || useNestedHybrid) {
+      const cacheOptions = await prompts([
+        {
+          type: 'confirm',
+          name: 'showCacheStats',
+          message: 'Show LLM cache statistics?',
+          initial: false
+        },
+        {
+          type: 'confirm',
+          name: 'clearCache',
+          message: 'Clear LLM cache before analysis?',
+          initial: false
+        },
+        {
+          type: 'confirm',
+          name: 'disableCache',
+          message: 'Disable LLM caching for this run?',
+          initial: false
+        }
+      ]);
+
+      cacheStats = cacheOptions.showCacheStats || false;
+      cacheClear = cacheOptions.clearCache || false;
+      cacheDisable = cacheOptions.disableCache || false;
     }
   }
 
