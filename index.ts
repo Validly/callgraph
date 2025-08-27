@@ -176,6 +176,7 @@ async function main() {
   let controlFlowFile: string | undefined;
   let promptTemplate = 'callgraph-basic';
   let customPrompt: string | undefined;
+  let promptSuffix: string | undefined;
   let cacheStats = false;
   let cacheClear = false;
   let cacheDisable = false;
@@ -237,6 +238,12 @@ async function main() {
   if (promptIndex !== -1) {
     customPrompt = args[promptIndex]?.split('=')[1];
     args.splice(promptIndex, 1); // Remove --prompt flag from args
+  }
+
+  const promptSuffixIndex = args.findIndex(arg => arg.startsWith('--prompt-suffix='));
+  if (promptSuffixIndex !== -1) {
+    promptSuffix = args[promptSuffixIndex]?.split('=')[1];
+    args.splice(promptSuffixIndex, 1); // Remove --prompt-suffix flag from args
   }
 
   const controlFlowIndex = args.findIndex(arg => arg.startsWith('--controlflow='));
@@ -314,6 +321,7 @@ Options:
                          Use --controlflow=functionName or --controlflow=file:functionName
   --template=NAME         Prompt template for LLM/hybrid analysis (default: callgraph-basic)
   --prompt="TEXT"         Custom prompt for LLM/hybrid analysis
+  --prompt-suffix="TEXT"  Additional text to append to the prompt
   --cache-stats           Show LLM cache statistics and exit
   --cache-clear           Clear all LLM cache entries and exit
   --cache-disable         Disable LLM caching for this run
@@ -337,6 +345,7 @@ Examples:
   bun run index.ts . --hybrid --template=hybrid-clustering-detailed
   bun run index.ts . --llm-vibe --template=callgraph-detailed
   bun run index.ts . --llm-vibe --prompt="Focus on error handling patterns"
+  bun run index.ts . --hybrid --prompt-suffix="Focus on security-related functions"
   bun run index.ts . --highlevel --svg # Generate high-level view with SVG
   bun run index.ts . --miro --llm-vibe # LLM analysis + Miro board
   bun run index.ts . --controlflow=myFunction # Control flow for 'myFunction'
@@ -469,6 +478,7 @@ Examples:
       const hybridResult = await hybridAnalyzer.analyze(projectPath, {
         templateName: hybridTemplate,
         customPrompt,
+        promptSuffix,
         includeSourceContext: hybridTemplate.includes('detailed')
       });
       

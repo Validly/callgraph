@@ -15,6 +15,7 @@ import { llmCache } from "./llm-cache.js";
 export interface HybridAnalyzerOptions {
   templateName?: string;
   customPrompt?: string;
+  promptSuffix?: string;
   model?: string;
   temperature?: number;
   includeSourceContext?: boolean;
@@ -41,6 +42,7 @@ export class HybridAnalyzer {
     const {
       templateName = "hybrid-clustering",
       customPrompt,
+      promptSuffix,
       model = "gemini-2.5-flash",
       temperature = 0.1,
       includeSourceContext = false,
@@ -70,7 +72,7 @@ export class HybridAnalyzer {
 
     // Step 4: Build prompt for domain analysis
     console.log("🧠 Step 4: Analyzing domain boundaries with LLM...");
-    const prompt =
+    let prompt =
       customPrompt ||
       this.buildPrompt(
         templateName,
@@ -80,6 +82,12 @@ export class HybridAnalyzer {
         sourceContext,
         promptVariables
       );
+    
+    // Append suffix if provided
+    if (promptSuffix) {
+      console.log(`📝 Appending custom suffix to prompt: "${promptSuffix}"`);
+      prompt += `\n\n${promptSuffix}`;
+    }
 
     const clusteringResponse = await this.queryLLMForClustering(
       prompt,
